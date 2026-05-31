@@ -95,6 +95,8 @@ export default function CheckoutPage() {
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cod");
     const [errors, setErrors] = useState<Partial<GuestForm>>({});
     const [submitted, setSubmitted] = useState(false);
+    const [paymentLoading, setPaymentLoading] = useState(false);
+    const [paymentError, setPaymentError] = useState<string | null>(null);
 
     const shipping =
         deliveryMethod === "express"
@@ -120,11 +122,63 @@ export default function CheckoutPage() {
         return Object.keys(e).length === 0;
     };
 
-    const submitOrder = (e: React.FormEvent | React.MouseEvent) => {
+    const submitOrder = async (e: React.FormEvent | React.MouseEvent) => {
         e.preventDefault();
         if (!validate()) return;
-        clearCart();
-        setSubmitted(true);
+
+        if (paymentMethod === "cod") {
+            clearCart();
+            setSubmitted(true);
+            return;
+        }
+
+        // Card payment — create a Stripe Checkout Session and redirect
+        setPaymentLoading(true);
+        setPaymentError(null);
+
+        try {
+            const res = await fetch("/api/checkout/create-session", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    items: items.map((i) => ({
+                        name: i.product.name,
+                        price: i.product.price,
+                        quantity: i.quantity,
+                        image: i.product.image,
+                    })),
+                    shipping,
+                    deliveryMethod,
+                    customer: {
+                        name: form.name,
+                        email: form.email,
+                        phone: form.phone,
+                        address: form.address,
+                        city: form.city,
+                        state: form.state,
+                        pincode: form.pincode,
+                    },
+                }),
+            });
+
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(
+                    (data as { error?: string }).error ||
+                        "Unable to start payment. Please try again."
+                );
+            }
+
+            const { url } = (await res.json()) as { url: string };
+            window.location.href = url;
+        } catch (err) {
+            setPaymentError(
+                err instanceof Error
+                    ? err.message
+                    : "Something went wrong. Please try again."
+            );
+            setPaymentLoading(false);
+        }
     };
 
     // Guard: empty cart (not post-submit)
@@ -411,7 +465,7 @@ export default function CheckoutPage() {
                                         {
                                             value: "card" as const,
                                             label: "Credit / Debit Card",
-                                            sub: "Visa, Mastercard, RuPay — coming soon",
+                                            sub: "Visa, Mastercard, RuPay · Secured by Stripe",
                                         },
                                     ] satisfies { value: PaymentMethod; label: string; sub: string }[]
                                 ).map(({ value, label, sub }) => (
@@ -444,12 +498,22 @@ export default function CheckoutPage() {
                             </div>
                         </fieldset>
 
+                        {/* Payment error */}
+                        {paymentError && (
+                            <p className="rounded-md border border-error/30 bg-error-container px-md py-sm font-label-md text-label-md text-on-error-container">
+                                {paymentError}
+                            </p>
+                        )}
+
                         {/* Mobile submit button (inside form) */}
                         <button
                             type="submit"
-                            className="w-full rounded-md bg-secondary py-md font-label-md text-label-md uppercase tracking-widest text-white transition-opacity hover:opacity-90 lg:hidden"
+                            disabled={paymentLoading}
+                            className="w-full rounded-md bg-secondary py-md font-label-md text-label-md uppercase tracking-widest text-white transition-opacity hover:opacity-90 disabled:opacity-50 lg:hidden"
                         >
-                            Place Order · ₹{orderTotal.toLocaleString("en-IN")}
+                            {paymentLoading
+                                ? "Redirecting to payment…"
+                                : `Place Order · ₹${orderTotal.toLocaleString("en-IN")}`}
                         </button>
                     </form>
 
@@ -526,9 +590,12 @@ export default function CheckoutPage() {
                         <button
                             type="submit"
                             form="checkout-form"
-                            className="hidden w-full rounded-md bg-secondary py-md font-label-md text-label-md uppercase tracking-widest text-white transition-opacity hover:opacity-90 lg:block"
+                            disabled={paymentLoading}
+                            className="hidden w-full rounded-md bg-secondary py-md font-label-md text-label-md uppercase tracking-widest text-white transition-opacity hover:opacity-90 disabled:opacity-50 lg:block"
                         >
-                            Place Order · ₹{orderTotal.toLocaleString("en-IN")}
+                            {paymentLoading
+                                ? "Redirecting to payment…"
+                                : `Place Order · ₹${orderTotal.toLocaleString("en-IN")}`}
                         </button>
 
                         {/* Trust signals */}
