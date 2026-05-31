@@ -1,13 +1,7 @@
 import type { Product } from "@/types";
 import { products as mockProducts } from "@/data/products";
 import { productBundleMap } from "@/data/bundleMap";
-
-/**
- * Toggle this flag to switch between mock data and real backend.
- * Set to `false` once a real API is available and fill in the
- * NEXT_PUBLIC_API_BASE_URL environment variable.
- */
-const USE_MOCK_DATA = true;
+import { USE_MOCK_DATA } from "@/lib/config";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
